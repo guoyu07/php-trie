@@ -115,7 +115,6 @@ PHP_MINIT_FUNCTION(trie)
  */
 PHP_MSHUTDOWN_FUNCTION(trie)
 {
-    zend_hash_destroy(Z_ARRVAL_P(TRIE_G(tries)));
     pefree(TRIE_G(tries), 1);
 
     pefree(TRIE_G(count), 1);
@@ -189,6 +188,7 @@ void trim_zval_dtor(void *pDest) {
 PHP_FUNCTION(trie_set)
 {
     zval            *src, **node_data;
+    zval            *first_node_data,*new_node_data;
     zval            **ppzval;
     HashTable       *src_ht, *node_ht;
     ulong           i, child = 1;
@@ -200,14 +200,12 @@ PHP_FUNCTION(trie_set)
 
     src_ht = Z_ARRVAL_P(src);
 
-    zval *new_node_data;
-    MAKE_STD_ZVAL(new_node_data);
-    array_init(new_node_data);
-    add_assoc_long_ex(new_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 0);
-
-    add_next_index_zval(TRIE_G(tries), new_node_data);
-
-
+    MAKE_STD_ZVAL(first_node_data);
+    array_init(first_node_data);
+    add_assoc_long_ex(first_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 0);
+    zval_add_ref(&first_node_data);
+    add_next_index_zval(TRIE_G(tries), first_node_data);
+    
     for(zend_hash_internal_pointer_reset(src_ht);
                         zend_hash_has_more_elements(src_ht) == SUCCESS;
                         zend_hash_move_forward(src_ht)) {
@@ -217,7 +215,7 @@ PHP_FUNCTION(trie_set)
         }
 
         ulong current = 0;
-        // zval_add_ref(ppzval);
+        
         for (i = 0; i < Z_STRLEN_PP(ppzval); i++) {
 
             char *key = estrndup(Z_STRVAL_PP(ppzval)+i, 1);
@@ -225,10 +223,11 @@ PHP_FUNCTION(trie_set)
             if (zend_hash_index_find(Z_ARRVAL_P(TRIE_G(tries)), current, (void **)&node_data) == SUCCESS
                 && zend_hash_find(Z_ARRVAL_PP(node_data), key, 2, (void **)&child_idx) == SUCCESS) {
                     current = (int)**child_idx;    
+                    efree(key);  
                     continue;
             }
 
-            zval *new_node_data;
+            
             MAKE_STD_ZVAL(new_node_data);
             array_init(new_node_data);
 
@@ -237,16 +236,20 @@ PHP_FUNCTION(trie_set)
             } else {
                 add_assoc_long_ex(new_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 0);
             }
-
+            // zval_copy_ctor(new_node_data);
             if (add_next_index_zval(TRIE_G(tries), new_node_data) == FAILURE) {
+                efree(key);  
                 RETURN_FALSE;
             }
 
             add_assoc_long_ex(*node_data, key, 2, child);
 
-            current = child++;          
+            current = child++;      
+
+            efree(key);    
         }
     }
+
     RETURN_ZVAL(TRIE_G(tries), 1, 0);   
 }
 /* }}} */
@@ -287,22 +290,29 @@ PHP_FUNCTION(trie_match)
                 smart_str_appendc(&str_result, '>');
                 back = offset + 1;
                 current = 0;
+
+                efree(word);
             }
         } else {
-            printf("back = %ld, offset = %ld\n", back, offset);
+            // printf("back = %ld, offset = %ld\n", back, offset);
             char *word = estrndup(str + back, offset - back + 1);
-            printf("else word=%s\n", word);
+            // printf("else word=%s\n", word);
             smart_str_appendl(&str_result, word, strlen(word));
 
             current = 0;
-            offset = back;
+            // offset = back;
             back = offset+1;
+
+            efree(word);
         }
 
-        printf("str_result.c = %s\n", str_result.c);
+        efree(key);
+        // printf("str_result.c = %s\n", str_result.c);
     }
+     smart_str_0(&str_result);
 
     ZVAL_STRINGL(return_value, str_result.c, str_result.len, 1);
+    smart_str_free(&str_result);
 }
 /* }}} */
 
