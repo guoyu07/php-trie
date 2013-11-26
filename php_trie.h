@@ -55,6 +55,7 @@ ZEND_BEGIN_MODULE_GLOBALS(trie)
 ZEND_END_MODULE_GLOBALS(trie)
 
 void trim_zval_dtor(void *pDest);
+int splite_string_to_array(char *str, int len, char **array);
 
 
 /* In every utility function you add that needs to use variables 

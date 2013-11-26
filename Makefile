@@ -4,8 +4,8 @@ top_srcdir = /home/vagrant/Code/php_source_code/php-5.4.18/ext/trie
 top_builddir = /home/vagrant/Code/php_source_code/php-5.4.18/ext/trie
 EGREP = /bin/grep -E
 SED = /bin/sed
-CONFIGURE_COMMAND = './configure' '--with-php-config=/usr/local/php/php5.4.21/bin/php-config'
-CONFIGURE_OPTIONS = '--with-php-config=/usr/local/php/php5.4.21/bin/php-config'
+CONFIGURE_COMMAND = './configure' '--with-php-config=/usr/local/php/php5.4.21-nts/bin/php-config'
+CONFIGURE_OPTIONS = '--with-php-config=/usr/local/php/php5.4.21-nts/bin/php-config'
 SHLIB_SUFFIX_NAME = so
 SHLIB_DL_SUFFIX_NAME = so
 ZEND_EXT_TYPE = zend_extension
@@ -17,12 +17,12 @@ PHP_MODULES = $(phplibdir)/trie.la
 PHP_ZEND_EX =
 all_targets = $(PHP_MODULES) $(PHP_ZEND_EX)
 install_targets = install-modules install-headers
-prefix = /usr/local/php/php5.4.21
+prefix = /usr/local/php/php5.4.21-nts
 exec_prefix = $(prefix)
 libdir = ${exec_prefix}/lib
-prefix = /usr/local/php/php5.4.21
+prefix = /usr/local/php/php5.4.21-nts
 phplibdir = /home/vagrant/Code/php_source_code/php-5.4.18/ext/trie/modules
-phpincludedir = /usr/local/php/php5.4.21/include/php
+phpincludedir = /usr/local/php/php5.4.21-nts/include/php
 CC = cc
 CFLAGS = -g -O0
 CFLAGS_CLEAN = $(CFLAGS)
@@ -31,11 +31,11 @@ CPPFLAGS = -DHAVE_CONFIG_H
 CXX =
 CXXFLAGS = -g -O0
 CXXFLAGS_CLEAN = $(CXXFLAGS)
-EXTENSION_DIR = /usr/local/php/php5.4.21/lib/php/extensions/debug-zts-20100525
-PHP_EXECUTABLE = /usr/local/php/php5.4.21/bin/php
+EXTENSION_DIR = /usr/local/php/php5.4.21-nts/lib/php/extensions/debug-non-zts-20100525
+PHP_EXECUTABLE = /usr/local/php/php5.4.21-nts/bin/php
 EXTRA_LDFLAGS =
 EXTRA_LIBS =
-INCLUDES = -I/usr/local/php/php5.4.21/include/php -I/usr/local/php/php5.4.21/include/php/main -I/usr/local/php/php5.4.21/include/php/TSRM -I/usr/local/php/php5.4.21/include/php/Zend -I/usr/local/php/php5.4.21/include/php/ext -I/usr/local/php/php5.4.21/include/php/ext/date/lib
+INCLUDES = -I/usr/local/php/php5.4.21-nts/include/php -I/usr/local/php/php5.4.21-nts/include/php/main -I/usr/local/php/php5.4.21-nts/include/php/TSRM -I/usr/local/php/php5.4.21-nts/include/php/Zend -I/usr/local/php/php5.4.21-nts/include/php/ext -I/usr/local/php/php5.4.21-nts/include/php/ext/date/lib
 LFLAGS =
 LDFLAGS =
 SHARED_LIBTOOL =

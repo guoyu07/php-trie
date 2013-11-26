@@ -115,6 +115,7 @@ PHP_MINIT_FUNCTION(trie)
  */
 PHP_MSHUTDOWN_FUNCTION(trie)
 {
+    
     pefree(TRIE_G(tries), 1);
 
     pefree(TRIE_G(count), 1);
@@ -167,7 +168,8 @@ PHP_FUNCTION(confirm_trie_compiled)
 
 /** {{{ destructor for persistent zval of trie local cache
  */
-void trim_zval_dtor(void *pDest) {
+void trim_zval_dtor(void *pDest) 
+{
         zval *val;
         val = (zval *)pDest;
         switch (Z_TYPE_P(val) & IS_CONSTANT_TYPE_MASK){
@@ -180,6 +182,34 @@ void trim_zval_dtor(void *pDest) {
                         pefree(Z_ARRVAL_P(val), 1);
                         break;
         }
+}
+/* }}} */
+
+/** {{{ int splite_string_to_array(char *str, int len, char **array)
+*/
+int splite_string_to_array(char *str, int len, char **array)
+{
+    int i = 0, counter = 0;
+    char **p = array;
+
+    while (i < len) {
+        if ((long)(unsigned char)str[i] >= 224) {
+            char *s = strndup(str+i, 3);
+            *p = s;
+            i += 3;
+        } else if ((long)(unsigned char)str[i] >= 192) {
+            char *s = strndup(str+i, 2);
+            *p = s;
+            i += 2;
+        } else {
+            char *s = strndup(str+i, 1);
+            *p = s;
+            i += 1;
+        }
+        p++;
+    }
+    
+    return p - array;
 }
 /* }}} */
 
@@ -215,15 +245,20 @@ PHP_FUNCTION(trie_set)
         }
 
         ulong current = 0;
-        
-        for (i = 0; i < Z_STRLEN_PP(ppzval); i++) {
+        int count = 0;
+        char **array = NULL, **p = NULL;
 
-            char *key = estrndup(Z_STRVAL_PP(ppzval)+i, 1);
+        array = (char **)ecalloc(sizeof(char *), Z_STRLEN_PP(ppzval));
+        p = array;
+
+        count = splite_string_to_array(Z_STRVAL_PP(ppzval), Z_STRLEN_PP(ppzval), p);
+
+        int i = 0;
+        for (i = 0; i < count; i++) {
 
             if (zend_hash_index_find(Z_ARRVAL_P(TRIE_G(tries)), current, (void **)&node_data) == SUCCESS
-                && zend_hash_find(Z_ARRVAL_PP(node_data), key, 2, (void **)&child_idx) == SUCCESS) {
+                && zend_hash_find(Z_ARRVAL_PP(node_data), *(p+i), strlen(*(p+i))+1, (void **)&child_idx) == SUCCESS) {
                     current = (int)**child_idx;    
-                    efree(key);  
                     continue;
             }
 
@@ -231,23 +266,25 @@ PHP_FUNCTION(trie_set)
             MAKE_STD_ZVAL(new_node_data);
             array_init(new_node_data);
 
-            if (i == Z_STRLEN_PP(ppzval) - 1) {
+            if (i == count - 1) {
                 add_assoc_long_ex(new_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 1);
             } else {
                 add_assoc_long_ex(new_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 0);
             }
-            // zval_copy_ctor(new_node_data);
+
             if (add_next_index_zval(TRIE_G(tries), new_node_data) == FAILURE) {
-                efree(key);  
+                zval_ptr_dtor(new_node_data);  
                 RETURN_FALSE;
             }
 
-            add_assoc_long_ex(*node_data, key, 2, child);
+            add_assoc_long_ex(*node_data, *(p+i), strlen(*(p+i))+1, child);
 
-            current = child++;      
+            current = child++;       
 
-            efree(key);    
+            zval_ptr_dtor(new_node_data);  
         }
+
+        efree(array);
     }
 
     RETURN_ZVAL(TRIE_G(tries), 1, 0);   
@@ -258,8 +295,9 @@ PHP_FUNCTION(trie_set)
 */
 PHP_FUNCTION(trie_match)
 {
-    ulong           current = 0, offset = 0, back = 0;
+    ulong           current = 0, offset = 0, back = 0, count = 0;
     char            *str;
+    char            **array = NULL, **p = NULL;
     ulong           str_len;
     zval            **node_data;
     ulong           **child_idx;
@@ -269,13 +307,15 @@ PHP_FUNCTION(trie_match)
     if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &str, &str_len) == FAILURE) {
         RETURN_FALSE;
     }
+
+    array = (char **)ecalloc(sizeof(char *), strlen(str));
+    p = array;
+
+    count = splite_string_to_array(str, str_len, p);
     
-    str_len = (ulong)strlen(str);
-    for (offset = 0; offset < str_len; offset++) {
-        char *key = estrndup(str + offset, 1);    
-        
+    for (offset = 0; offset < count; offset++) {  
         if (zend_hash_index_find(Z_ARRVAL_P(TRIE_G(tries)), current, (void **)&node_data) == SUCCESS
-            && zend_hash_find(Z_ARRVAL_PP(node_data), key, 2, (void **)&child_idx) == SUCCESS) {
+            && zend_hash_find(Z_ARRVAL_PP(node_data), *(p+offset), strlen(*(p+offset))+1, (void **)&child_idx) == SUCCESS) {
             
             current = (int)**child_idx;    
 
@@ -284,32 +324,28 @@ PHP_FUNCTION(trie_match)
             zend_hash_find(Z_ARRVAL_PP(node_data), "is_keyword_end", strlen("is_keyword_end") + 1, (void **)&is_match);
 
             if (Z_LVAL_PP(is_match)) {
-                char *word = estrndup(str + back, offset - back + 1);
                 smart_str_appendc(&str_result, '<');
-                smart_str_appendl(&str_result, word, strlen(word));
+                int i;
+                for (i = back; i < offset + 1; i++) {
+                    smart_str_appendl(&str_result, *(p+i), strlen(*(p+i))+1);    
+                }
                 smart_str_appendc(&str_result, '>');
                 back = offset + 1;
                 current = 0;
-
-                efree(word);
             }
         } else {
-            // printf("back = %ld, offset = %ld\n", back, offset);
-            char *word = estrndup(str + back, offset - back + 1);
-            // printf("else word=%s\n", word);
-            smart_str_appendl(&str_result, word, strlen(word));
+            int i;
+                for (i = back; i < offset + 1; i++) {
+                    smart_str_appendl(&str_result, *(p+i), strlen(*(p+i))+1);    
+                }
 
             current = 0;
-            // offset = back;
             back = offset+1;
-
-            efree(word);
         }
-
-        efree(key);
-        // printf("str_result.c = %s\n", str_result.c);
     }
-     smart_str_0(&str_result);
+    
+    smart_str_0(&str_result);
+    efree(array);
 
     ZVAL_STRINGL(return_value, str_result.c, str_result.len, 1);
     smart_str_free(&str_result);
