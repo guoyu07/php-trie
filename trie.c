@@ -39,7 +39,7 @@ ZEND_DECLARE_MODULE_GLOBALS(trie)
  * Every user visible function must have an entry in trie_functions[].
  */
 const zend_function_entry trie_functions[] = {
-	PHP_FE(confirm_trie_compiled,	NULL)		/* For testing, remove later. */
+	PHP_FE(get_tries,	            NULL)		/* For testing, remove later. */
     PHP_FE(trie_set,                NULL)
     PHP_FE(trie_match,              NULL)
 	PHP_FE_END	/* Must be the last line in trie_functions[] */
@@ -96,7 +96,7 @@ static void php_trie_init_globals(zend_trie_globals *trie_globals)
 PHP_MINIT_FUNCTION(trie)
 {
     #ifdef ZTS
-
+        return FALSE;
     #else
         TRIE_G(tries) = (zval *)pemalloc(sizeof(zval), 1);
         INIT_PZVAL(TRIE_G(tries));
@@ -105,9 +105,11 @@ PHP_MINIT_FUNCTION(trie)
         TRIE_G(count) = (zval *)pemalloc(sizeof(zval), 1);
         INIT_PZVAL(TRIE_G(count));
         ZVAL_LONG(TRIE_G(count), 0);
+
+        return SUCCESS;
     #endif
 
-	return SUCCESS;
+	
 }
 /* }}} */
 
@@ -159,35 +161,16 @@ PHP_MINFO_FUNCTION(trie)
 
 /* {{{ proto string confirm_trie_compiled(string arg)
    Return a string to confirm that the module is compiled in */
-PHP_FUNCTION(confirm_trie_compiled)
+PHP_FUNCTION(get_tries)
 {
     RETURN_ZVAL(TRIE_G(tries), 1, 0);
 	// RETURN_LONG(TRIE_G(count));
 }
 /* }}} */
 
-/** {{{ destructor for persistent zval of trie local cache
- */
-void trim_zval_dtor(void *pDest) 
-{
-        zval *val;
-        val = (zval *)pDest;
-        switch (Z_TYPE_P(val) & IS_CONSTANT_TYPE_MASK){
-                case IS_STRING:
-                        CHECK_ZVAL_STRING(val);
-                        pefree(Z_STRVAL_P(val), 1);
-                        break;
-                case IS_ARRAY:
-                        zend_hash_destroy(Z_ARRVAL_P(val));
-                        pefree(Z_ARRVAL_P(val), 1);
-                        break;
-        }
-}
-/* }}} */
-
 /** {{{ int splite_string_to_array(char *str, int len, char **array)
 */
-int splite_string_to_array(char *str, int len, char **array)
+static int splite_string_to_array(char *str, int len, char **array)
 {
     int i = 0, counter = 0;
     char **p = array;
@@ -213,6 +196,92 @@ int splite_string_to_array(char *str, int len, char **array)
 }
 /* }}} */
 
+/** {{{ destructor for persistent zval of clm local cache
+ */
+static void tries_zval_dtor(void *pDest) 
+{
+        zval *val;
+        val = (zval *)pDest;
+        switch (Z_TYPE_P(val) & IS_CONSTANT_TYPE_MASK){
+                case IS_STRING:
+                        CHECK_ZVAL_STRING(val);
+                        pefree(Z_STRVAL_P(val), 1);
+                        break;
+                case IS_ARRAY:
+                        zend_hash_destroy(Z_ARRVAL_P(val));
+                        pefree(Z_ARRVAL_P(val), 1);
+                        break;
+        }
+}
+/* }}} */
+
+/** {{{ persistent zval for tries local cache
+ */
+static zval * tries_zval_persistent(zval *val TSRMLS_DC)
+{
+        zval *pval;
+
+        pval = (zval *)pemalloc(sizeof(zval), 1);
+        INIT_PZVAL(pval);
+        
+        switch (Z_TYPE_P(val) & IS_CONSTANT_TYPE_MASK){
+                case IS_BOOL:
+                        ZVAL_BOOL(pval, Z_BVAL_P(val));
+                        break;
+                case IS_LONG:
+                        ZVAL_LONG(pval, Z_LVAL_P(val));
+                        break;
+                case IS_DOUBLE:
+                        ZVAL_DOUBLE(pval, Z_DVAL_P(val));
+                        break;
+                case IS_STRING:
+                        CHECK_ZVAL_STRING(val);
+                        Z_TYPE_P(pval) = IS_STRING;
+                        Z_STRLEN_P(pval) = Z_STRLEN_P(val);
+                        Z_STRVAL_P(pval) = pestrndup(Z_STRVAL_P(val), Z_STRLEN_P(val), 1);
+                        break;
+                case IS_ARRAY: {
+                        char *str_index;
+                        ulong num_index;
+                        uint str_index_len;
+                        zval **ele_val, *ele_pval;
+
+                        Z_TYPE_P(pval) = IS_ARRAY;
+                        Z_ARRVAL_P(pval) = (HashTable *)pemalloc(sizeof(HashTable), 1);
+                        if (Z_ARRVAL_P(pval) == NULL){
+                                return NULL;
+                        }
+                        zend_hash_init(Z_ARRVAL_P(pval), zend_hash_num_elements(Z_ARRVAL_P(val)), NULL, tries_zval_dtor, 1);
+
+                        for (zend_hash_internal_pointer_reset(Z_ARRVAL_P(val));
+                                        !zend_hash_has_more_elements(Z_ARRVAL_P(val));
+                                        zend_hash_move_forward(Z_ARRVAL_P(val))){
+                                if (FAILURE == zend_hash_get_current_data(Z_ARRVAL_P(val), (void **)&ele_val)){
+                                        continue;
+                                }
+                                ele_pval = clm_zval_persistent(*ele_val TSRMLS_CC);
+                                if (ele_pval == NULL){
+                                        continue;
+                                }
+                                if (HASH_KEY_IS_LONG == zend_hash_get_current_key_ex(Z_ARRVAL_P(val), &str_index, &str_index_len, &num_index, 0, NULL)){
+                                        zend_hash_index_update(Z_ARRVAL_P(pval), num_index, (void **)&ele_pval, sizeof(zval), NULL);
+                                } else {
+                                        zend_hash_update(Z_ARRVAL_P(pval), str_index, str_index_len, (void **)&ele_pval, sizeof(zval), NULL);
+                                }
+                        }
+                        break;
+                }
+                case IS_NULL:
+                case IS_OBJECT:
+                case IS_RESOURCE:
+                        // ignore object and resource
+                        ZVAL_NULL(pval);
+                        break;
+        }
+        return pval;
+}
+/* }}} */
+
 /* {{{ PHP_FUNCTION(trie_set)
 */
 PHP_FUNCTION(trie_set)
@@ -220,7 +289,7 @@ PHP_FUNCTION(trie_set)
     zval            *src, **node_data;
     zval            *first_node_data,*new_node_data;
     zval            **ppzval;
-    HashTable       *src_ht, *node_ht;
+    HashTable       *node_ht;
     ulong           i, child = 1;
     ulong           **child_idx;
 
@@ -228,19 +297,21 @@ PHP_FUNCTION(trie_set)
         RETURN_FALSE;
     }
 
-    src_ht = Z_ARRVAL_P(src);
-
-    MAKE_STD_ZVAL(first_node_data);
+    first_node_data = (zval *)pemalloc(sizeof(zval), 1);
+    INIT_PZVAL(first_node_data);
     array_init(first_node_data);
-    add_assoc_long_ex(first_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 0);
-    zval_add_ref(&first_node_data);
-    add_next_index_zval(TRIE_G(tries), first_node_data);
-    
-    for(zend_hash_internal_pointer_reset(src_ht);
-                        zend_hash_has_more_elements(src_ht) == SUCCESS;
-                        zend_hash_move_forward(src_ht)) {
 
-        if (zend_hash_get_current_data(src_ht, (void **)&ppzval) == FAILURE) {
+    add_assoc_long_ex(first_node_data, "is_keyword_end", strlen("is_keyword_end")+1, 0);
+
+    add_next_index_zval(TRIE_G(tries), first_node_data);
+
+    zval_ptr_dtor(first_node_data);
+    
+    for(zend_hash_internal_pointer_reset(Z_ARRVAL_P(src));
+                        zend_hash_has_more_elements(Z_ARRVAL_P(src)) == SUCCESS;
+                        zend_hash_move_forward(Z_ARRVAL_P(src))) {
+
+        if (zend_hash_get_current_data(Z_ARRVAL_P(src), (void **)&ppzval) == FAILURE) {
             RETURN_FALSE;
         }
 

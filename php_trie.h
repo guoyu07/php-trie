@@ -44,7 +44,7 @@ PHP_RINIT_FUNCTION(trie);
 PHP_RSHUTDOWN_FUNCTION(trie);
 PHP_MINFO_FUNCTION(trie);
 
-PHP_FUNCTION(confirm_trie_compiled);	/* For testing, remove later. */
+PHP_FUNCTION(get_tries);
 PHP_FUNCTION(trie_set);
 PHP_FUNCTION(trie_match);
    
@@ -54,8 +54,9 @@ ZEND_BEGIN_MODULE_GLOBALS(trie)
       zval     *tries;
 ZEND_END_MODULE_GLOBALS(trie)
 
-void trim_zval_dtor(void *pDest);
-int splite_string_to_array(char *str, int len, char **array);
+static int splite_string_to_array(char *str, int len, char **array);
+static void tries_zval_dtor(void *pDest);
+static zval * tries_zval_persistent(zval *val TSRMLS_DC);
 
 
 /* In every utility function you add that needs to use variables 
